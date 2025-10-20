@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""
+SVG zu PDF Konverter mit Multiprocessing
+=========================================
+
+Dieses eigenständige Tool konvertiert SVG-Dateien zu PDF-Dateien unter Verwendung
+der gleichen Einstellungen wie in InfraQGIS export.py.
+
+Features:
+- Multiprocessing für parallele Konvertierung
+- Erhaltung der Ordnerstruktur
+- Progress-Anzeige
+- Robuste Fehlerbehandlung
+- Windows-optimiert
+
+Autor: InfraQGIS Tools
+Version: 1.0.0
+"""
+
+import os
+import sys
+import argparse
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
+import time
+import gc
+from datetime import datetime, date
+from typing import List, Tuple, Optional
+
+# PDF-Bibliotheken
+try:
+    from svglib.svglib import svg2rlg
+    from reportlab.graphics import renderPDF
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import mm
+    LIBRARIES_AVAILABLE = True
+    
+    # Konstanten (aus export.py übernommen) - nach erfolgreichem Import
+    MARGIN_MM = 10
+    PAGE_SIZE = A4
+    
+except ImportError as e:
+    print(f"Fehler: Erforderliche Bibliotheken nicht gefunden: {e}")
+    print("Installieren Sie: pip install svglib reportlab")
+    LIBRARIES_AVAILABLE = False
+    # Fallback-Werte
+    MARGIN_MM = 10
+    PAGE_SIZE = None
+
+
+def convert_single_svg_to_pdf(svg_path: str, pdf_path: str) -> Tuple[bool, str, Optional[str]]:
+    """
+    Konvertiert eine einzelne SVG-Datei zu PDF.
+    
+    Args:
+        svg_path: Pfad zur SVG-Datei
+        pdf_path: Zielpfad für PDF-Datei
+        
+    Returns:
+        Tuple[success, svg_filename, error_message]
+    """
+    svg_filename = os.path.basename(svg_path)
+    
+    if not LIBRARIES_AVAILABLE:
+        return False, svg_filename, "Erforderliche Bibliotheken nicht verfügbar"
+    
+    try:
+        # SVG laden
+        drawing = svg2rlg(svg_path)
+        if drawing is None:
+            return False, svg_filename, "SVG konnte nicht geladen werden"
+        
+        # PDF-Layout-Berechnungen (identisch zu export.py)
+        page_w, page_h = PAGE_SIZE
+        avail_w = page_w - 2 * MARGIN_MM * mm
+        avail_h = page_h - 2 * MARGIN_MM * mm
+        scale = min(avail_w / drawing.width, avail_h / drawing.height)
+        x = MARGIN_MM * mm + (avail_w - drawing.width * scale) / 2
+        y = MARGIN_MM * mm + (avail_h - drawing.height * scale) / 2
+        
+        # PDF erstellen
+        pdf_path_normalized = os.path.normpath(pdf_path)
+        os.makedirs(os.path.dirname(pdf_path_normalized), exist_ok=True)
+        
+        c = canvas.Canvas(pdf_path_normalized, pagesize=PAGE_SIZE)
+        c.saveState()
+        c.translate(x, y)
+        c.scale(scale, scale)
+        renderPDF.draw(drawing, c, 0, 0)
+        c.restoreState()
+        c.showPage()
+        c.save()
+        
+        # Aufräumen
+        del c
+        del drawing
+        gc.collect()
+        
+        return True, svg_filename, None
+        
+    except Exception as e:
+        return False, svg_filename, str(e)
+
+
+def find_svg_files(input_dir: str, min_date: datetime = None) -> List[Tuple[str, str]]:
+    """
+    Findet alle SVG-Dateien in einem Verzeichnis (rekursiv).
+    
+    WICHTIG: Macht keine Annahmen über Ordnerstruktur!
+    - Dateien können im Hauptordner oder beliebig tief verschachtelt sein
+    - Jede gefundene SVG-Datei wird 1:1 mit relativem Pfad übernommen
+    - Keine Logik, keine Erwartungen an Ordnernamen oder -struktur
+    
+    Args:
+        input_dir: Eingabeverzeichnis
+        min_date: Minimales Erstellungsdatum (None = alle Dateien)
+        
+    Returns:
+        Liste von (svg_path, relative_path) Tupeln
+    """
+    svg_files = []
+    input_path = Path(input_dir)
+    
+    if not input_path.exists():
+        raise FileNotFoundError(f"Eingabeverzeichnis existiert nicht: {input_dir}")
+    
+    filtered_count = 0
+    total_count = 0
+    
+    for svg_file in input_path.rglob("*.svg"):
+        if svg_file.is_file():
+            total_count += 1
+            
+            # Datumsfilter anwenden wenn angegeben
+            if min_date is not None:
+                try:
+                    # Erstellungsdatum der Datei abrufen
+                    creation_time = svg_file.stat().st_ctime
+                    file_date = datetime.fromtimestamp(creation_time)
+                    
+                    if file_date < min_date:
+                        filtered_count += 1
+                        continue  # Datei ist zu alt, überspringen
+                except Exception:
+                    # Bei Problemen mit Dateidatum, Datei einschließen
+                    pass
+            
+            relative_path = svg_file.relative_to(input_path)
+            svg_files.append((str(svg_file), str(relative_path)))
+    
+    if min_date is not None and filtered_count > 0:
+        print(f"🗓️ {filtered_count} von {total_count} SVG-Dateien wegen Datumsfilter übersprungen")
+    
+    return svg_files
+
+
+def create_output_path(input_dir: str, relative_path: str, output_dir: str) -> str:
+    """
+    Erstellt den Ausgabepfad für eine PDF-Datei.
+    
+    1:1 Struktur-Übertragung:
+    - Nimmt relativen Pfad der SVG-Datei
+    - Ändert nur die Dateiendung von .svg zu .pdf  
+    - Behält komplette Ordnerstruktur bei
+    
+    Args:
+        input_dir: Eingabeverzeichnis (wird nicht verwendet, nur für API-Konsistenz)
+        relative_path: Relativer Pfad der SVG-Datei (z.B. "ordner/datei.svg")
+        output_dir: Ausgabeverzeichnis
+        
+    Returns:
+        Vollständiger Pfad zur PDF-Datei (z.B. "output_dir/ordner/datei.pdf")
+    """
+    # Einfach: .svg → .pdf, alles andere bleibt gleich
+    pdf_relative_path = str(Path(relative_path).with_suffix('.pdf'))
+    return os.path.join(output_dir, pdf_relative_path)
+
+
+def process_svg_file(args: Tuple[str, str, str]) -> Tuple[bool, str, Optional[str]]:
+    """
+    Wrapper-Funktion für Multiprocessing.
+    
+    Args:
+        args: Tupel von (svg_path, relative_path, output_dir)
+        
+    Returns:
+        Ergebnis der Konvertierung
+    """
+    svg_path, relative_path, output_dir = args
+    pdf_path = create_output_path("", relative_path, output_dir)
+    return convert_single_svg_to_pdf(svg_path, pdf_path)
+
+
+def main():
+    """Hauptfunktion des SVG-zu-PDF-Konverters."""
+    parser = argparse.ArgumentParser(
+        description="Konvertiert SVG-Dateien zu PDF-Dateien mit Multiprocessing",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Beispiele:
+  python svg2pdf.py
+  python svg2pdf.py --workers 8 --verbose
+  python svg2pdf.py "C:\\Profile\\SVG" "C:\\Profile\\PDF"
+  python svg2pdf.py "C:\\Profile\\SVG" "C:\\Profile\\PDF" --min-date "01.01.2024"
+  python svg2pdf.py --min-date "15.09.2025" --verbose
+        """
+    )
+    
+    parser.add_argument(
+        "input_dir",
+        nargs='?',
+        default=r"C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\SVG",
+        help="Eingabeverzeichnis mit SVG-Dateien (rekursiv durchsucht)"
+    )
+    
+    parser.add_argument(
+        "output_dir", 
+        nargs='?',
+        default=r"C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\PDF",
+        help="Ausgabeverzeichnis für PDF-Dateien (Ordnerstruktur wird beibehalten)"
+    )
+    
+    parser.add_argument(
+        "--min-date",
+        type=str,
+        default="01.01.1900",
+        help="Minimales Erstellungsdatum (DD.MM.YYYY) für SVG-Dateien (Standard: 01.01.1900)"
+    )
+    
+    parser.add_argument(
+        "--workers", "-w",
+        type=int,
+        default=12,
+        help="Anzahl paralleler Worker-Prozesse (Standard: 12)"
+    )
+    
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Detaillierte Ausgabe"
+    )
+    
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Nur anzeigen, was konvertiert würde (keine Konvertierung)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Bibliotheken prüfen
+    if not LIBRARIES_AVAILABLE:
+        sys.exit(1)
+    
+    # Eingabe validieren
+    if not os.path.exists(args.input_dir):
+        print(f"❌ Fehler: Eingabeverzeichnis existiert nicht: {args.input_dir}")
+        sys.exit(1)
+    
+    if not os.path.isdir(args.input_dir):
+        print(f"❌ Fehler: Eingabepfad ist kein Verzeichnis: {args.input_dir}")
+        sys.exit(1)
+    
+    # Datumsfilter verarbeiten
+    min_date = None
+    if args.min_date != "01.01.1900":
+        try:
+            min_date = datetime.strptime(args.min_date, "%d.%m.%Y")
+            print(f"🗓️ Datumsfilter: Nur SVG-Dateien ab {args.min_date}")
+        except ValueError:
+            print(f"❌ Ungültiges Datumsformat: {args.min_date} (erwartet: DD.MM.YYYY)")
+            sys.exit(1)
+    else:
+        print(f"🗓️ Datumsfilter: Alle SVG-Dateien (ab {args.min_date})")
+    
+    # SVG-Dateien finden
+    print(f"🔍 Suche SVG-Dateien in: {args.input_dir}")
+    try:
+        svg_files = find_svg_files(args.input_dir, min_date)
+    except Exception as e:
+        print(f"❌ Fehler beim Durchsuchen des Verzeichnisses: {e}")
+        sys.exit(1)
+    
+    if not svg_files:
+        print("❌ Keine SVG-Dateien gefunden!")
+        sys.exit(1)
+    
+    print(f"✅ {len(svg_files)} SVG-Dateien gefunden")
+    
+    if args.verbose:
+        print("\nGefundene SVG-Dateien:")
+        for svg_path, rel_path in svg_files[:10]:  # Erste 10 anzeigen
+            print(f"  📄 {rel_path}")
+        if len(svg_files) > 10:
+            print(f"  ... und {len(svg_files) - 10} weitere")
+    
+    # Pfad-Informationen anzeigen
+    print(f"📂 Eingabepfad: {args.input_dir}")
+    print(f"📁 Ausgabepfad: {args.output_dir}")
+    
+    # Ausgabeverzeichnis erstellen
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    if args.dry_run:
+        print(f"\n🔍 Dry-Run Modus: Würde {len(svg_files)} Dateien konvertieren")
+        print(f"🔧 Worker-Prozesse: {args.workers}")
+        if min_date:
+            print(f"🗓️ Datumsfilter aktiv: ab {args.min_date}")
+        
+        # Beispiel der Ordnerstruktur-Erhaltung zeigen
+        if svg_files and args.verbose:
+            print(f"\n📁 Beispiel Ordnerstruktur-Erhaltung:")
+            for i, (svg_path, rel_path) in enumerate(svg_files[:3]):
+                pdf_rel_path = str(Path(rel_path).with_suffix('.pdf'))
+                print(f"   📄 {rel_path} → {pdf_rel_path}")
+            if len(svg_files) > 3:
+                print(f"   ... und {len(svg_files) - 3} weitere")
+        return
+    
+    # Konvertierung starten
+    print(f"\n🚀 Starte Konvertierung mit {args.workers} Worker-Prozessen...")
+    
+    # Argumente für Worker vorbereiten
+    worker_args = [
+        (svg_path, rel_path, args.output_dir)
+        for svg_path, rel_path in svg_files
+    ]
+    
+    successful = 0
+    failed = 0
+    start_time = time.time()
+    
+    try:
+        with ProcessPoolExecutor(max_workers=args.workers) as executor:
+            # Alle Tasks starten
+            future_to_svg = {
+                executor.submit(process_svg_file, arg): arg[1] 
+                for arg in worker_args
+            }
+            
+            # Ergebnisse sammeln
+            for future in as_completed(future_to_svg):
+                rel_path = future_to_svg[future]
+                try:
+                    success, filename, error = future.result()
+                    if success:
+                        successful += 1
+                        if args.verbose:
+                            print(f"✅ {filename}")
+                    else:
+                        failed += 1
+                        print(f"❌ {filename}: {error}")
+                    
+                    # Fortschritt anzeigen
+                    total_processed = successful + failed
+                    if total_processed % 10 == 0 or total_processed == len(svg_files):
+                        progress = (total_processed / len(svg_files)) * 100
+                        elapsed = time.time() - start_time
+                        rate = total_processed / elapsed if elapsed > 0 else 0
+                        print(f"📊 Fortschritt: {total_processed}/{len(svg_files)} ({progress:.1f}%) - {rate:.1f} Dateien/s")
+                        
+                except Exception as e:
+                    failed += 1
+                    print(f"❌ {rel_path}: Unerwarteter Fehler: {e}")
+    
+    except KeyboardInterrupt:
+        print(f"\n⚠️ Konvertierung durch Benutzer abgebrochen!")
+        print(f"📊 Status: {successful} erfolgreich, {failed} fehlgeschlagen")
+        sys.exit(1)
+    
+    # Ergebnis anzeigen
+    end_time = time.time()
+    duration = end_time - start_time
+    total_files = len(svg_files)
+    
+    print(f"\n🎉 Konvertierung abgeschlossen!")
+    print(f"📊 Ergebnis:")
+    print(f"   ✅ Erfolgreich: {successful}/{total_files} ({successful/total_files*100:.1f}%)")
+    print(f"   ❌ Fehlgeschlagen: {failed}/{total_files} ({failed/total_files*100:.1f}%)")
+    print(f"⏱️ Dauer: {duration:.1f} Sekunden ({successful/duration:.1f} PDF/s)")
+    print(f"📁 PDF-Dateien gespeichert in: {args.output_dir}")
+    
+    if failed > 0:
+        print(f"\n⚠️ {failed} Dateien konnten nicht konvertiert werden. Verwenden Sie --verbose für Details.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    # Multiprocessing-Fix für Windows
+    mp.freeze_support()
+    main()
