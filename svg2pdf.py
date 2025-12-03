@@ -13,7 +13,7 @@ Features:
 - Robuste Fehlerbehandlung
 - Windows-optimiert
 
-Autor: InfraQGIS Tools
+Autor: Fabian Schöpflin
 Version: 1.0.0
 """
 
@@ -48,7 +48,7 @@ except ImportError as e:
     LIBRARIES_AVAILABLE = False
     # Fallback-Werte
     MARGIN_MM = 10
-    PAGE_SIZE = None
+    PAGE_SIZE = (595.276, 841.890)  # A4 size in points
 
 
 def convert_single_svg_to_pdf(
@@ -107,7 +107,9 @@ def convert_single_svg_to_pdf(
         return False, svg_filename, str(e)
 
 
-def find_svg_files(input_dir: str, min_date: datetime = None) -> List[Tuple[str, str]]:
+def find_svg_files(
+    input_dir: str, min_date: Optional[datetime] = None
+) -> List[Tuple[str, str]]:
     """
     Findet alle SVG-Dateien in einem Verzeichnis (rekursiv).
 
