@@ -48,7 +48,7 @@ except ImportError as e:
     LIBRARIES_AVAILABLE = False
     # Fallback-Werte
     MARGIN_MM = 10
-    PAGE_SIZE = (595.276, 841.890)  # A4 size in points
+    PAGE_SIZE = (595.276, 841.890)  # A4-Größe in Punkten
 
 
 def convert_single_svg_to_pdf(
@@ -62,7 +62,7 @@ def convert_single_svg_to_pdf(
         pdf_path: Zielpfad für PDF-Datei
 
     Returns:
-        Tuple[success, svg_filename, error_message]
+        Tupel aus (success, svg_filename, error_message)
     """
     svg_filename = os.path.basename(svg_path)
 
