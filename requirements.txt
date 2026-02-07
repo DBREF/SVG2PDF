@@ -1,9 +1,0 @@
-# SVG zu PDF Konverter - Abhängigkeiten
-# =====================================
-
-# PDF-Generierung und SVG-Verarbeitung
-reportlab>=4.0.0
-svglib>=1.5.0
-
-# Optional: Entwicklungswerkzeuge
-# ruff>=0.1.0  # Linter und Formatter (bereits in VS Code installiert)
