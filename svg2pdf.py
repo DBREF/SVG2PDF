@@ -3,8 +3,7 @@
 SVG zu PDF Konverter mit Multiprocessing
 =========================================
 
-Dieses eigenständige Tool konvertiert SVG-Dateien zu PDF-Dateien unter Verwendung
-der gleichen Einstellungen wie in InfraQGIS export.py.
+Dieses eigenständige Tool konvertiert SVG-Dateien zu PDF-Dateien.
 
 Features:
 - Multiprocessing für parallele Konvertierung
@@ -17,12 +16,15 @@ Autor: Fabian Schöpflin
 Version: 1.0.0
 """
 
+# --- Standardbibliotheken ---
 import argparse
 import gc
 import multiprocessing as mp
 import os
 import sys
 import time
+
+# --- Drittanbieter-Bibliotheken ---
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -38,7 +40,7 @@ try:
 
     LIBRARIES_AVAILABLE = True
 
-    # Konstanten (aus export.py übernommen) - nach erfolgreichem Import
+    # Konstanten
     MARGIN_MM = 10
     PAGE_SIZE = A4
 
@@ -75,7 +77,7 @@ def convert_single_svg_to_pdf(
         if drawing is None:
             return False, svg_filename, "SVG konnte nicht geladen werden"
 
-        # PDF-Layout-Berechnungen (identisch zu export.py)
+        # PDF-Layout-Berechnungen
         page_w, page_h = PAGE_SIZE
         avail_w = page_w - 2 * MARGIN_MM * mm
         avail_h = page_h - 2 * MARGIN_MM * mm
@@ -142,7 +144,7 @@ def find_svg_files(
             if min_date is not None:
                 try:
                     # Erstellungsdatum der Datei abrufen
-                    creation_time = svg_file.stat().st_ctime
+                    creation_time = svg_file.stat().st_birthtime
                     file_date = datetime.fromtimestamp(creation_time)
 
                     if file_date < min_date:
@@ -218,14 +220,14 @@ Beispiele:
     parser.add_argument(
         "input_dir",
         nargs="?",
-        default=r"C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\SVG",
+        default=r"C:\Profile\SVG",
         help="Eingabeverzeichnis mit SVG-Dateien (rekursiv durchsucht)",
     )
 
     parser.add_argument(
         "output_dir",
         nargs="?",
-        default=r"C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\PDF",
+        default=r"C:\Profile\PDF",
         help="Ausgabeverzeichnis für PDF-Dateien (Ordnerstruktur wird beibehalten)",
     )
 

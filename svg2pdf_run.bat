@@ -17,8 +17,8 @@ if errorlevel 1 (
 )
 
 REM Standard-Pfade
-set DEFAULT_INPUT="C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\SVG"
-set DEFAULT_OUTPUT="C:\Users\FabianSchoepflin\Downloads\Lichtraum\Profile\PDF"
+set DEFAULT_INPUT="C:\Profile\SVG"
+set DEFAULT_OUTPUT="C:\Profile\PDF"
 
 REM Beispiel-Aufruf anzeigen
 echo Verwendung:
