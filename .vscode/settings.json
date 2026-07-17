@@ -9,8 +9,6 @@
   "ruff.enable": true,
   "ruff.lint.enable": true,
   "ruff.format.preview": true,
-  "python-envs.defaultEnvManager": "ms-python.python:venv",
-  "python.analysis.autoImportCompletions": true,
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
