@@ -28,7 +28,6 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 # PDF-Bibliotheken
 try:
@@ -55,7 +54,7 @@ except ImportError as e:
 
 def convert_single_svg_to_pdf(
     svg_path: str, pdf_path: str
-) -> Tuple[bool, str, Optional[str]]:
+) -> tuple[bool, str, str | None]:
     """
     Konvertiert eine einzelne SVG-Datei zu PDF.
 
@@ -110,8 +109,8 @@ def convert_single_svg_to_pdf(
 
 
 def find_svg_files(
-    input_dir: str, min_date: Optional[datetime] = None
-) -> List[Tuple[str, str]]:
+    input_dir: str, min_date: datetime | None = None
+) -> list[tuple[str, str]]:
     """
     Findet alle SVG-Dateien in einem Verzeichnis (rekursiv).
 
@@ -187,7 +186,7 @@ def create_output_path(input_dir: str, relative_path: str, output_dir: str) -> s
     return os.path.join(output_dir, pdf_relative_path)
 
 
-def process_svg_file(args: Tuple[str, str, str]) -> Tuple[bool, str, Optional[str]]:
+def process_svg_file(args: tuple[str, str, str]) -> tuple[bool, str, str | None]:
     """
     Wrapper-Funktion für Multiprocessing.
 
