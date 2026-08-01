@@ -59,5 +59,6 @@ Ablauf in [svg2pdf.py](svg2pdf.py): `main()` → `find_svg_files()` (rglob + opt
 
 - Benutzerausgaben auf Deutsch mit Emoji-Präfix (✅ ❌ 📊 🗓️ 🚀); Fortschritt alle 10 Dateien.
 - Docstrings und Kommentare auf Deutsch, Google-Style-Args/Returns.
+- **Bezeichner auf Englisch.** Neue Variablen, Funktionen, Methoden, Klassen und Konstanten werden englisch benannt — Ausnahme: fachliche deutsche Begriffe oder Eigenbegriffe (z. B. Domänen- oder Produktnamen), die bleiben deutsch. Bestehende deutsche Bezeichner **nicht** nebenbei umbenennen; eine Umstellung erfolgt ggf. separat und geplant.
 - Type Hints im modernen Stil (`tuple[bool, str, str | None]`).
 - `create_output_path()` hat einen bewusst ungenutzten `input_dir`-Parameter (API-Konsistenz, im Docstring vermerkt) — nicht "aufräumen".
