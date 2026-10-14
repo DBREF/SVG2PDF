@@ -9,13 +9,13 @@ Eigenständiges CLI-Tool zur Stapelkonvertierung von SVG- zu PDF-Dateien (svglib
 ## Befehle
 
 ```powershell
-# Umgebung (venv vorhanden, Python 3.14)
+# Umgebung (venv vorhanden, Python 3.15)
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 # Ausführen
 python svg2pdf.py                                      # hardcodierte Defaults C:\Profile\SVG → C:\Profile\PDF
-python svg2pdf.py "<in>" "<out>" --workers 8 --verbose
+python svg2pdf.py "<in>" "<out>" --workers 8 --verbose   # Default: 12 Worker
 python svg2pdf.py "<in>" "<out>" --dry-run             # Vorschau ohne Konvertierung
 python svg2pdf.py "<in>" "<out>" --min-date "01.01.2024"
 
@@ -45,6 +45,8 @@ Ablauf in [svg2pdf.py](svg2pdf.py): `main()` → `find_svg_files()` (rglob + opt
 
 **1:1-Strukturübertragung.** `find_svg_files()` macht bewusst *keine* Annahmen über Ordnernamen oder -tiefe; der relative Pfad wird unverändert übernommen und nur die Endung getauscht. Diese Eigenschaft ist im Docstring explizit festgehalten — keine Sonderbehandlung für bestimmte Ordner einbauen.
 
+**Seitenlayout.** Jede SVG wird auf genau eine A4-Hochformatseite gesetzt, mit `MARGIN_MM` Rand proportional eingepasst und zentriert — kleine SVGs werden dabei hochskaliert, Querformat gibt es nicht. `drawing.width/height == 0` führt zu `ZeroDivisionError`, der als normaler Dateifehler zurückkommt.
+
 **Datumsfilter.** Der Default `"01.01.1900"` ist ein Sentinel, der per **String-Vergleich** geprüft wird ([svg2pdf.py:275](svg2pdf.py#L275)) — explizit `--min-date "01.01.1900"` anzugeben deaktiviert den Filter, statt ihn zu setzen. Gefiltert wird über `st_birthtime` (auf Windows erst ab Python 3.12 verfügbar); schlägt der Zugriff fehl, wird die Datei **eingeschlossen**, nicht übersprungen.
 
 **Exit-Codes.** `sys.exit(1)` bei fehlenden Bibliotheken, ungültigem Eingabepfad, ungültigem Datumsformat, null gefundenen SVGs, Abbruch per Ctrl+C und bei mindestens einer fehlgeschlagenen Konvertierung. Der Batch-Wrapper wertet das nicht aus.
@@ -53,7 +55,11 @@ Ablauf in [svg2pdf.py](svg2pdf.py): `main()` → `find_svg_files()` (rglob + opt
 
 **Namenskollision `svg2pdf`.** `svglib` installiert ein gleichnamiges Console-Script (`.venv/Scripts/svg2pdf.exe` → `svglib:main`). Im aktivierten venv startet `svg2pdf` deshalb svglibs Tool, nicht dieses Projekt. Immer `python svg2pdf.py` aufrufen.
 
-**`svg2pdf_run.bat` nutzt `python` aus dem PATH**, nicht das `.venv`. Sind dort `reportlab`/`svglib` nicht installiert, bricht der Wrapper mit „Erforderliche Bibliotheken nicht gefunden" ab — aktuell auf dieser Maschine der Fall. Zum Testen stattdessen `.\.venv\Scripts\python.exe svg2pdf.py ...` verwenden.
+**`svg2pdf_run.bat` nutzt `python` aus dem PATH**, nicht das `.venv`. Fehlen dort `reportlab`/`svglib`, bricht der Wrapper mit „Erforderliche Bibliotheken nicht gefunden" ab. Zum reproduzierbaren Testen `.\.venv\Scripts\python.exe svg2pdf.py ...` verwenden.
+
+**`--dry-run` ist nicht ganz seiteneffektfrei:** Das Ausgabeverzeichnis wird vor dem Dry-Run-Check angelegt. Der Dry-Run endet mit Exit-Code 0.
+
+**Kein Skip bestehender PDFs:** Jeder Lauf konvertiert und überschreibt alle gefundenen Dateien. Inkrementelle Läufe gehen nur über `--min-date`.
 
 ## Konventionen
 
