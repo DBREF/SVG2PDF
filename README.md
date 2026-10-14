@@ -15,7 +15,7 @@ Eigenständiges Tool zur Stapelkonvertierung von SVG-Dateien in PDF-Dateien mit 
 
 ## Voraussetzungen
 
-- Python 3.x
+- Python 3.12 oder neuer (getestet mit 3.15) — der Datumsfilter benötigt unter Windows `st_birthtime`, das es erst ab 3.12 gibt
 - Python-Pakete:
   - `svglib`, `reportlab`
 
